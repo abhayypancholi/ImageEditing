@@ -2,23 +2,18 @@
 node_modules/
 __pycache__/
 *.pyc
-*.pyo
-*.pyd
-.Python
 venv/
 env/
-ENV/
 
 # Build outputs
 dist/
 build/
-*.egg-info/
 
-# Environment variables
+# Environment variables (Updated for your architecture)
 .env
 .env.local
-.env.*.local
-
+**/.env
+**/.env.*
 # IDE
 .vscode/
 .idea/
