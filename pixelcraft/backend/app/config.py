@@ -53,8 +53,8 @@ ALLOWED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff", ".tif"}
 ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://localhost:3000",
-    "https://*.vercel.app",
-    settings.frontend_url,
+    "https://*.vercel.app",  # Allows all Vercel preview links
+    "*",                     # Temporary: Allows all origins to prevent CORS errors
 ]
 
 # MongoDB settings
