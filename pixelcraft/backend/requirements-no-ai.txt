@@ -1,0 +1,30 @@
+# Requirements WITHOUT AI features - for quick testing
+# This installs much faster and uses less disk space
+# Run: pip install -r requirements-no-ai.txt
+
+# Core web framework
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+python-multipart==0.0.9
+python-dotenv==1.0.1
+pydantic==2.5.3
+pydantic-settings==2.1.0
+aiofiles==23.2.1
+
+# Database
+motor==3.3.2
+
+# Image processing
+pillow>=10.0.0
+numpy>=1.24.0
+opencv-python>=4.8.0
+opencv-contrib-python>=4.8.0
+
+# Scientific computing
+scipy>=1.11.0
+scikit-learn>=1.3.0
+scikit-image>=0.21.0
+shapely>=2.0.0
+
+# Note: OCR, Face Analysis, and Background Removal will not work
+# But all other features (crop, zoom, filters, enhance, etc.) will work fine

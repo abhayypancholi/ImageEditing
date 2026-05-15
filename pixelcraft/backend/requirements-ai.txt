@@ -1,0 +1,14 @@
+# AI/ML requirements - install this AFTER requirements-minimal.txt
+# Run: pip install -r requirements-ai.txt
+
+# Deep learning frameworks (install these first)
+torch>=2.0.0
+torchvision>=0.15.0
+tensorflow>=2.13.0
+tf-keras>=2.13.0
+
+# AI models
+easyocr>=1.7.0
+deepface>=0.0.90
+rembg>=2.0.50
+onnxruntime>=1.16.0
