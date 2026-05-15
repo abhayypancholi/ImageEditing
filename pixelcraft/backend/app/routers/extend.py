@@ -1,8 +1,10 @@
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import numpy as np
 from PIL import Image
 import cv2
+import asyncio
 
 from app.services.file_service import get_working_image_path, save_working_image
 from app.services.history_service import save_history_snapshot
@@ -18,8 +20,28 @@ class ExtendRequest(BaseModel):
 
 @router.post("/")
 async def extend_image(request: ExtendRequest):
-    """Extend image using pattern-based extrapolation"""
+    """
+    FIX B4: Extend image using pattern-based extrapolation
+    with proper dtype, bounds, and kernel handling
+    """
     try:
+        working_path = get_working_image_path(request.session_id)
+        
+        result = await apply_extend(
+            str(working_path),
+            request.session_id,
+            request.extend_left,
+            request.extend_right,
+            request.extend_top,
+            request.extend_bottom
+        )
+        
+        if not result.get("success"):
+            return JSONResponse(
+                status_code=500,
+                content=result
+            )
+        
         # Save history snapshot
         await save_history_snapshot(
             request.session_id,
@@ -32,130 +54,70 @@ async def extend_image(request: ExtendRequest):
             }
         )
         
-        # Load image
-        image_path = get_working_image_path(request.session_id)
-        img = np.array(Image.open(image_path).convert('RGB'))
-        h, w = img.shape[:2]
-        
-        new_h = h + request.extend_top + request.extend_bottom
-        new_w = w + request.extend_left + request.extend_right
-        
-        result = np.zeros((new_h, new_w, 3), dtype=np.uint8)
-        
-        # Place original image in center
-        result[request.extend_top:request.extend_top + h, 
-               request.extend_left:request.extend_left + w] = img
-        
-        # FILL LEFT EXTENSION
-        if request.extend_left > 0:
-            sample_w = min(80, w)
-            strip = img[:, :sample_w, :]
-            
-            for col in range(request.extend_left - 1, -1, -1):
-                dist = request.extend_left - col
-                src_col = min(dist - 1, sample_w - 1)
-                base_pixel = strip[:, src_col, :]
-                
-                # Add subtle noise for texture continuity
-                noise = np.random.normal(0, 3, base_pixel.shape).astype(np.float32)
-                blended = np.clip(base_pixel.astype(np.float32) + noise, 0, 255).astype(np.uint8)
-                
-                # Smooth transition weight
-                weight = np.exp(-dist * 0.03)
-                gray_val = np.mean(base_pixel, axis=1, keepdims=True)
-                final = (blended * weight + gray_val * (1 - weight)).astype(np.uint8)
-                
-                result[request.extend_top:request.extend_top + h, col] = final
-        
-        # FILL RIGHT EXTENSION
-        if request.extend_right > 0:
-            sample_w = min(80, w)
-            strip = img[:, -sample_w:, :]
-            
-            for col in range(request.extend_left + w, new_w):
-                dist = col - (request.extend_left + w) + 1
-                src_col = min(dist - 1, sample_w - 1)
-                base_pixel = strip[:, -src_col - 1, :]
-                
-                noise = np.random.normal(0, 3, base_pixel.shape).astype(np.float32)
-                blended = np.clip(base_pixel.astype(np.float32) + noise, 0, 255).astype(np.uint8)
-                
-                weight = np.exp(-dist * 0.03)
-                gray_val = np.mean(base_pixel, axis=1, keepdims=True)
-                final = (blended * weight + gray_val * (1 - weight)).astype(np.uint8)
-                
-                result[request.extend_top:request.extend_top + h, col] = final
-        
-        # FILL TOP EXTENSION
-        if request.extend_top > 0:
-            sample_h = min(80, h)
-            strip = img[:sample_h, :, :]
-            
-            for row in range(request.extend_top - 1, -1, -1):
-                dist = request.extend_top - row
-                src_row = min(dist - 1, sample_h - 1)
-                base_pixel = strip[src_row, :, :]
-                
-                noise = np.random.normal(0, 3, base_pixel.shape).astype(np.float32)
-                blended = np.clip(base_pixel.astype(np.float32) + noise, 0, 255).astype(np.uint8)
-                
-                weight = np.exp(-dist * 0.03)
-                gray_val = np.mean(base_pixel, axis=1, keepdims=True)
-                final = (blended * weight + gray_val * (1 - weight)).astype(np.uint8)
-                
-                result[row, request.extend_left:request.extend_left + w] = final
-        
-        # FILL BOTTOM EXTENSION
-        if request.extend_bottom > 0:
-            sample_h = min(80, h)
-            strip = img[-sample_h:, :, :]
-            
-            for row in range(request.extend_top + h, new_h):
-                dist = row - (request.extend_top + h) + 1
-                src_row = min(dist - 1, sample_h - 1)
-                base_pixel = strip[-src_row - 1, :, :]
-                
-                noise = np.random.normal(0, 3, base_pixel.shape).astype(np.float32)
-                blended = np.clip(base_pixel.astype(np.float32) + noise, 0, 255).astype(np.uint8)
-                
-                weight = np.exp(-dist * 0.03)
-                gray_val = np.mean(base_pixel, axis=1, keepdims=True)
-                final = (blended * weight + gray_val * (1 - weight)).astype(np.uint8)
-                
-                result[row, request.extend_left:request.extend_left + w] = final
-        
-        # Gaussian blur the extended regions to smooth seams
-        mask = np.zeros((new_h, new_w), dtype=np.uint8)
-        
-        # Mark extended regions in mask
-        if request.extend_top > 0:
-            mask[:request.extend_top, :] = 255
-        if request.extend_bottom > 0:
-            mask[request.extend_top + h:, :] = 255
-        if request.extend_left > 0:
-            mask[:, :request.extend_left] = 255
-        if request.extend_right > 0:
-            mask[:, request.extend_left + w:] = 255
-        
-        # Feather the seam boundary
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (21, 21))
-        feather = cv2.dilate(mask, kernel)
-        feather_f = feather.astype(np.float32) / 255.0
-        
-        blurred_result = cv2.GaussianBlur(result, (15, 15), 0)
-        feather_3ch = feather_f[:, :, np.newaxis]
-        result = (result * (1 - feather_3ch * 0.3) + blurred_result * (feather_3ch * 0.3)).astype(np.uint8)
-        
-        # Save result
-        result_img = Image.fromarray(result)
-        save_working_image(request.session_id, result_img)
-        
         return {
             "success": True,
-            "message": f"Image extended by {request.extend_left}+{request.extend_right}+{request.extend_top}+{request.extend_bottom}px"
+            "message": f"Image extended by {request.extend_left}+{request.extend_right}+{request.extend_top}+{request.extend_bottom}px",
+            "data": {
+                "new_width": result["new_width"],
+                "new_height": result["new_height"]
+            }
         }
     
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Image not found")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Image extension failed: {str(e)}")
+
+async def apply_extend(working_path: str, session_id: str,
+                      extend_left: int, extend_right: int,
+                      extend_top: int, extend_bottom: int) -> dict:
+    """FIX B4: Apply image extension with proper dtype and bounds handling"""
+    def _run_extend():
+        img = Image.open(working_path).convert('RGB')
+        img_arr = np.array(img, dtype=np.uint8)  # EXPLICIT uint8
+        H, W, C = img_arr.shape
+        
+        new_H = H + extend_top  + extend_bottom
+        new_W = W + extend_left + extend_right
+        
+        # Initialize with edge-replicated border — uses CV2 copyMakeBorder
+        # This gives much better results than hand-rolled extrapolation
+        result = cv2.copyMakeBorder(
+            img_arr,
+            top    = extend_top,
+            bottom = extend_bottom,
+            left   = extend_left,
+            right  = extend_right,
+            borderType = cv2.BORDER_REFLECT_101  # reflects edge pixels, no seam
+        )
+        # cv2 returns uint8 — no dtype issue
+        
+        # Feather the seam boundary using Gaussian blur on ONLY the extended region
+        # Create a feather mask: 1.0 in extended areas, 0.0 in original
+        feather_mask = np.zeros((new_H, new_W), dtype=np.float32)
+        if extend_top    > 0: feather_mask[:extend_top, :]             = 1.0
+        if extend_bottom > 0: feather_mask[extend_top+H:, :]           = 1.0
+        if extend_left   > 0: feather_mask[extend_top:extend_top+H, :extend_left]  = 1.0
+        if extend_right  > 0: feather_mask[extend_top:extend_top+H, extend_left+W:] = 1.0
+        
+        # Kernel must be odd and at least 1
+        max_ext = max(extend_top, extend_bottom, extend_left, extend_right, 1)
+        k = min(max_ext * 2 + 1, 51)
+        k = k if k % 2 == 1 else k + 1  # ensure odd
+        
+        blurred_mask  = cv2.GaussianBlur(feather_mask, (k, k), 0)
+        blurred_result = cv2.GaussianBlur(result.astype(np.float32), (k, k), 0)
+        blurred_mask_3 = blurred_mask[:, :, np.newaxis]
+        
+        # Blend: original area stays sharp, extended area is blurred to hide seam
+        final = (result.astype(np.float32) * (1.0 - blurred_mask_3 * 0.4) +
+                 blurred_result            *        blurred_mask_3 * 0.4).clip(0, 255).astype(np.uint8)
+        
+        Image.fromarray(final, 'RGB').save(working_path, 'PNG')
+        return {"new_width": new_W, "new_height": new_H}
+    
+    try:
+        info = await asyncio.to_thread(_run_extend)
+        return {"success": True, **info}
+    except Exception as e:
+        return {"success": False, "error": f"Extend failed: {type(e).__name__}: {e}"}

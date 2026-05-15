@@ -41,13 +41,25 @@ export const ImageCanvas: React.FC = () => {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Set canvas size to match container
+    // Set canvas size to match container with device pixel ratio
     const resizeCanvas = () => {
       const parent = canvas.parentElement;
-      if (parent) {
-        canvas.width = parent.clientWidth;
-        canvas.height = parent.clientHeight;
-      }
+      if (!parent) return;
+
+      const dpr = window.devicePixelRatio || 1;
+      const w = parent.clientWidth;
+      const h = parent.clientHeight;
+
+      // Set bitmap size (accounting for DPR)
+      canvas.width = Math.floor(w * dpr);
+      canvas.height = Math.floor(h * dpr);
+
+      // Set CSS size
+      canvas.style.width = w + 'px';
+      canvas.style.height = h + 'px';
+
+      // Scale context for crisp rendering on retina displays
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     };
 
     resizeCanvas();
@@ -57,11 +69,11 @@ export const ImageCanvas: React.FC = () => {
     let animationFrameId: number;
     const render = () => {
       if (imageRef.current) {
-        drawImage(ctx, imageRef.current, zoom, panX, panY, canvas.width, canvas.height);
+        drawImage(ctx, imageRef.current, zoom, panX, panY, canvas.width / (window.devicePixelRatio || 1), canvas.height / (window.devicePixelRatio || 1));
       } else {
         // Clear canvas if no image
         ctx.fillStyle = 'var(--bg-canvas)';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillRect(0, 0, canvas.width / (window.devicePixelRatio || 1), canvas.height / (window.devicePixelRatio || 1));
       }
       animationFrameId = requestAnimationFrame(render);
     };
@@ -88,7 +100,8 @@ export const ImageCanvas: React.FC = () => {
       panX,
       panY,
       metadata.width,
-      metadata.height
+      metadata.height,
+      canvas // Pass canvas element for DPR handling
     );
 
     setCursor(coords.x, coords.y);

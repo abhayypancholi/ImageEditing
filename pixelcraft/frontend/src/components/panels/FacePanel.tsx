@@ -48,8 +48,17 @@ export const FacePanel: React.FC = () => {
       });
 
       if (response.data.success) {
-        setFaces(response.data.data.faces);
-        toast.success(`Detected ${response.data.data.total_faces} face(s)`);
+        const facesData = response.data.data.faces || [];
+        const totalFaces = response.data.data.total_faces || 0;
+        
+        setFaces(facesData);
+        
+        // FIX C3: Graceful empty state handling
+        if (totalFaces === 0 || facesData.length === 0) {
+          toast('No faces detected in this image', { icon: '🔍' });
+        } else {
+          toast.success(`Detected ${totalFaces} face(s)`);
+        }
       }
     } catch (error) {
       toast.error('Face analysis failed');
@@ -155,10 +164,15 @@ export const FacePanel: React.FC = () => {
 
       {faces.length === 0 && !isLoading && (
         <div className="text-center py-8 text-[var(--text-3)]">
-          <Smile size={48} className="mx-auto mb-2 opacity-50" />
-          <p className="text-sm">No faces detected yet</p>
-          <p className="text-xs mt-2">
-            Click "Analyze Expressions" to detect faces and analyze emotions
+          {/* FIX C3: Enhanced empty state with helpful message */}
+          <div className="text-4xl mb-3">🔍</div>
+          <p className="text-sm font-medium text-[var(--text-1)] mb-2">
+            No faces detected
+          </p>
+          <p className="text-xs leading-relaxed max-w-xs mx-auto">
+            Try an image with clearer, front-facing subjects.
+            <br />
+            Minimum recommended face size: 50×50 pixels.
           </p>
         </div>
       )}

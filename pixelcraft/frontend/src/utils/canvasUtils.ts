@@ -51,17 +51,34 @@ export const screenToImageCoords = (
   panX: number,
   panY: number,
   imageWidth: number,
-  imageHeight: number
-): { x: number; y: number } => {
-  const canvasX = screenX - canvasRect.left;
-  const canvasY = screenY - canvasRect.top;
+  imageHeight: number,
+  canvasElement?: HTMLCanvasElement
+): { x: number; y: number; canvasX: number; canvasY: number } => {
+  // CSS pixels relative to canvas element
+  const cssX = screenX - canvasRect.left;
+  const cssY = screenY - canvasRect.top;
 
+  let canvasX = cssX;
+  let canvasY = cssY;
+
+  // If canvas element provided, account for bitmap size vs CSS size
+  if (canvasElement) {
+    const scaleX = canvasElement.width / canvasRect.width;
+    const scaleY = canvasElement.height / canvasRect.height;
+    canvasX = cssX * scaleX;
+    canvasY = cssY * scaleY;
+  }
+
+  // Image-space coordinates (accounting for zoom and pan)
   const imageX = Math.floor((canvasX - panX) / zoom);
   const imageY = Math.floor((canvasY - panY) / zoom);
 
+  // Clamped to image bounds
   return {
     x: Math.max(0, Math.min(imageWidth - 1, imageX)),
     y: Math.max(0, Math.min(imageHeight - 1, imageY)),
+    canvasX,
+    canvasY,
   };
 };
 
