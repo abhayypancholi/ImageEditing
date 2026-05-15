@@ -1,0 +1,59 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+env/
+ENV/
+
+# Build outputs
+dist/
+build/
+*.egg-info/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Storage (images)
+backend/storage/originals/
+backend/storage/working/
+backend/storage/history/
+backend/storage/exports/
+
+# Keep storage directories but ignore contents
+!backend/storage/.gitkeep
+!backend/storage/originals/.gitkeep
+!backend/storage/working/.gitkeep
+!backend/storage/history/.gitkeep
+!backend/storage/exports/.gitkeep
+
+# Logs
+*.log
+logs/
+
+# Testing
+coverage/
+.pytest_cache/
+
+# Misc
+.cache/
+*.bak
+
+# Documentation (development notes, not needed in repo)
+.docs/
