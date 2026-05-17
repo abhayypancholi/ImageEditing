@@ -1,5 +1,6 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 
 from app.database import connect_to_mongo, close_mongo_connection
@@ -9,6 +10,7 @@ import asyncio
 from datetime import datetime, timedelta
 from pathlib import Path
 import shutil
+import traceback
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -68,6 +70,20 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# FIX B1: Global exception handler
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    tb = traceback.format_exc()
+    print(f"[UNHANDLED ERROR] {type(exc).__name__}: {exc}\n{tb}")
+    return JSONResponse(
+        status_code=500,
+        content={
+            "success": False,
+            "detail": f"{type(exc).__name__}: {str(exc)}",
+            "error": str(exc)
+        }
+    )
+
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
@@ -103,5 +119,5 @@ async def root():
     }
 
 @app.get("/health")
-async def health_check():
-    return {"status": "healthy"}
+async def health():
+    return {"status": "ok", "timestamp": datetime.utcnow().isoformat()}

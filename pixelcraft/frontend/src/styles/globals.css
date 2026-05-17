@@ -4,6 +4,13 @@
 @tailwind components;
 @tailwind utilities;
 
+/* CRITICAL: Prevent viewport overflow */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
 :root {
   /* Backgrounds */
   --bg-app: #111113;
@@ -54,9 +61,10 @@
 html,
 body,
 #root {
+  width: 100vw;
+  height: 100vh;
   margin: 0;
   padding: 0;
-  height: 100%;
   overflow: hidden;
   font-family: 'DM Sans', system-ui, sans-serif;
   font-size: 13px;

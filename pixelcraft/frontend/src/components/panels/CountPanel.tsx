@@ -41,8 +41,23 @@ export const CountPanel: React.FC = () => {
         tolerance,
       })
       .then((response) => {
-        setCountResult(response.data.data);
-        toast.success(`Counted ${response.data.data.count} pixels`);
+        const data = response.data.data;
+        setCountResult(data);
+        
+        // FIX C1: Animate the count number
+        const countEl = document.getElementById('count-big-number');
+        if (countEl) {
+          countEl.textContent = data.count.toString();
+          countEl.animate(
+            [
+              { transform: 'scale(0.8)', opacity: 0 },
+              { transform: 'scale(1.0)', opacity: 1 }
+            ],
+            { duration: 300, easing: 'ease-out' }
+          );
+        }
+        
+        toast.success(`Counted ${data.count} pixels`);
       })
       .catch((error) => {
         toast.error('Failed to count objects');
@@ -164,13 +179,21 @@ export const CountPanel: React.FC = () => {
       {countResult && (
         <>
           <SectionLabel>Click Result</SectionLabel>
-          <div className="p-3 rounded border border-[var(--border)] bg-[var(--bg-hover)] space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-[var(--text-2)]">Pixel Count:</span>
-              <span className="text-lg font-bold text-[var(--text-1)]">
-                {countResult.count.toLocaleString()}
-              </span>
+          
+          {/* FIX C1: Big number display */}
+          <div className="text-center py-4">
+            <div
+              id="count-big-number"
+              className="text-6xl font-bold text-[var(--accent)] font-mono leading-none"
+            >
+              {countResult.count.toLocaleString()}
             </div>
+            <div className="text-sm text-[var(--text-2)] mt-2">
+              objects detected
+            </div>
+          </div>
+          
+          <div className="p-3 rounded border border-[var(--border)] bg-[var(--bg-hover)] space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-sm text-[var(--text-2)]">Color:</span>
               <div className="flex items-center gap-2">
@@ -196,37 +219,35 @@ export const CountPanel: React.FC = () => {
       {allObjects.length > 0 && (
         <>
           <SectionLabel>All Objects ({allObjects.length})</SectionLabel>
-          <div className="space-y-2 max-h-96 overflow-y-auto">
-            {allObjects.map((obj, index) => (
-              <div
-                key={index}
-                className="p-3 rounded border border-[var(--border)] hover:bg-[var(--bg-hover)] space-y-1"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Hash size={14} className="text-[var(--text-3)]" />
-                    <span className="text-sm font-medium text-[var(--text-1)]">
-                      Object {index + 1}
-                    </span>
-                  </div>
-                  <span className="text-sm font-bold text-[var(--accent)]">
-                    {obj.count.toLocaleString()} px
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div
-                    className="w-4 h-4 rounded border border-[var(--border)]"
-                    style={{ backgroundColor: rgbToHex(obj.color) }}
-                  />
-                  <span className="text-xs font-mono text-[var(--text-3)]">
-                    {rgbToHex(obj.color)}
-                  </span>
-                </div>
-                <div className="text-xs text-[var(--text-3)]">
-                  Size: {obj.bbox.width} × {obj.bbox.height} px
-                </div>
-              </div>
-            ))}
+          
+          {/* FIX C1: Objects table with proper formatting */}
+          <div className="max-h-60 overflow-y-auto">
+            <table className="w-full border-collapse text-xs font-mono">
+              <thead>
+                <tr className="border-b border-[var(--border)]">
+                  <th className="text-left py-2 px-2 text-[var(--text-2)]">#</th>
+                  <th className="text-right py-2 px-2 text-[var(--text-2)]">Size px²</th>
+                  <th className="text-right py-2 px-2 text-[var(--text-2)]">X</th>
+                  <th className="text-right py-2 px-2 text-[var(--text-2)]">Y</th>
+                </tr>
+              </thead>
+              <tbody>
+                {allObjects.map((obj, index) => (
+                  <tr key={index} className="border-b border-[var(--border)] hover:bg-[var(--bg-hover)]">
+                    <td className="py-2 px-2 text-[var(--text-1)]">{index + 1}</td>
+                    <td className="text-right py-2 px-2 text-[var(--text-2)]">
+                      {obj.count.toLocaleString()}
+                    </td>
+                    <td className="text-right py-2 px-2 text-[var(--text-2)]">
+                      {obj.centroid.x}
+                    </td>
+                    <td className="text-right py-2 px-2 text-[var(--text-2)]">
+                      {obj.centroid.y}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </>
       )}

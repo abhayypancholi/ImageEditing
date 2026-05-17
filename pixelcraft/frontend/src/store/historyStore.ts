@@ -37,32 +37,44 @@ export const useHistoryStore = create<HistoryStore>((set, get) => ({
     const state = get();
     if (state.undoStack.length === 0) return null;
 
-    const entry = state.undoStack[state.undoStack.length - 1];
+    // Pop the current operation from undo stack
+    const currentEntry = state.undoStack[state.undoStack.length - 1];
     const newUndoStack = state.undoStack.slice(0, -1);
-    const newCurrentIndex = newUndoStack.length - 1;
+    
+    // Push to redo stack
+    const newRedoStack = [...state.redoStack, currentEntry];
+    
+    // The entry to restore is the NEW top of undo stack (state BEFORE the popped operation)
+    // If undo stack is now empty, return null (restore to original)
+    const restoreEntry = newUndoStack.length > 0 ? newUndoStack[newUndoStack.length - 1] : null;
     
     set({
       undoStack: newUndoStack,
-      redoStack: [...state.redoStack, entry],
-      currentIndex: newCurrentIndex,
+      redoStack: newRedoStack,
+      currentIndex: newUndoStack.length - 1,
     });
     
-    return newUndoStack[newCurrentIndex] || null;
+    return restoreEntry;
   },
 
   redo: () => {
     const state = get();
     if (state.redoStack.length === 0) return null;
 
+    // Pop from redo stack
     const entry = state.redoStack[state.redoStack.length - 1];
+    const newRedoStack = state.redoStack.slice(0, -1);
+    
+    // Push to undo stack
     const newUndoStack = [...state.undoStack, entry];
     
     set({
-      redoStack: state.redoStack.slice(0, -1),
+      redoStack: newRedoStack,
       undoStack: newUndoStack,
       currentIndex: newUndoStack.length - 1,
     });
     
+    // Return the entry to restore TO (the one we just redid)
     return entry;
   },
 

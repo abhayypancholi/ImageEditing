@@ -7,6 +7,7 @@ import cv2
 import base64
 from io import BytesIO
 import os
+import asyncio
 
 from app.services.file_service import get_working_image_path
 from app.services.history_service import save_history_snapshot
@@ -139,6 +140,58 @@ def detect_language(text: str) -> str:
     devanagari_count = sum(1 for c in text if '\u0900' <= c <= '\u097F')
     return 'hi' if devanagari_count > len(text) * 0.3 else 'en'
 
+def preprocess_for_ocr(img_cv: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    FIX B6: Improve OCR accuracy with adaptive binarization.
+    Returns a preprocessed image suitable for EasyOCR.
+    """
+    # Upscale if too small (OCR needs at least 32px text height)
+    h, w = img_cv.shape[:2]
+    if w < 800:
+        scale = 800 / w
+        img_cv = cv2.resize(img_cv, None, fx=scale, fy=scale,
+                          interpolation=cv2.INTER_CUBIC)
+    
+    # Convert to grayscale
+    gray = cv2.cvtColor(img_cv, cv2.COLOR_BGR2GRAY)
+    
+    # Denoise
+    gray = cv2.fastNlMeansDenoising(gray, h=10,
+                                    templateWindowSize=7,
+                                    searchWindowSize=21)
+    
+    # Deskew (small skew correction before OCR)
+    coords = np.column_stack(np.where(gray > 0))
+    if len(coords) > 100:
+        angle = cv2.minAreaRect(coords)[-1]
+        if angle < -45: angle = 90 + angle
+        if abs(angle) > 0.5:  # only correct if skew > 0.5 degrees
+            (bh, bw) = gray.shape
+            M = cv2.getRotationMatrix2D((bw//2, bh//2), angle, 1.0)
+            gray = cv2.warpAffine(gray, M, (bw, bh),
+                                flags=cv2.INTER_CUBIC,
+                                borderMode=cv2.BORDER_REPLICATE)
+            img_cv = cv2.warpAffine(img_cv, M, (bw, bh),
+                                   flags=cv2.INTER_CUBIC,
+                                   borderMode=cv2.BORDER_REPLICATE)
+    
+    # Adaptive threshold for binarization
+    binary = cv2.adaptiveThreshold(gray, 255,
+                                   cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                   cv2.THRESH_BINARY,
+                                   blockSize=11, C=2)
+    
+    # Morphological cleanup to connect broken characters
+    kernel = np.ones((2, 2), np.uint8)
+    binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
+    
+    # Convert binary back to 3-channel for EasyOCR
+    binary_3ch = cv2.cvtColor(binary, cv2.COLOR_GRAY2BGR)
+    
+    # Return BOTH: original (for color accuracy) and binary (for OCR)
+    # EasyOCR works better on the binarized version
+    return binary_3ch, img_cv
+
 class OCRRequest(BaseModel):
     session_id: str
     mode: str = "auto"  # auto, english, hindi, mixed
@@ -148,113 +201,109 @@ class OCRRequest(BaseModel):
 
 @router.post("/extract")
 async def extract_text(request: OCRRequest):
-    """Extract text from image using EasyOCR"""
+    """Extract text from image using EasyOCR with FIX B6 preprocessing"""
     try:
+        # Wrap blocking operations (FIX B9)
+        def _blocking_ocr():
+            # Load image
+            image_path = get_working_image_path(request.session_id)
+            img = Image.open(image_path)
+            
+            # Crop to region if specified
+            if request.region:
+                x, y, w, h = request.region
+                img = img.crop((x, y, x + w, y + h))
+            
+            # Convert to OpenCV format
+            img_cv = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
+            
+            # FIX B6: Apply preprocessing for better OCR accuracy
+            binary_img, color_img = preprocess_for_ocr(img_cv)
+            
+            # Language mapping
+            lang_map = {
+                "auto": ["en", "hi"],
+                "english": ["en"],
+                "hindi": ["hi"],
+                "mixed": ["en", "hi"]
+            }
+            langs = lang_map.get(request.mode, ["en", "hi"])
+            
+            # Get EasyOCR reader
+            reader = get_reader(langs)
+            
+            # Perform OCR on the binarized image
+            results = reader.readtext(
+                binary_img,
+                paragraph=True,
+                decoder='beamsearch',
+                beamWidth=10,
+                contrast_ths=0.1,
+                adjust_contrast=0.5
+            )
+            
+            # Format results with correction
+            formatted_blocks = []
+            h_img, w_img = img_cv.shape[:2]
+            scale_factor = 800 / w_img if w_img < 800 else 1.0
+            
+            for bbox, text, confidence in results:
+                # Scale coordinates back if image was upscaled
+                offset_x = request.region[0] if request.region else 0
+                offset_y = request.region[1] if request.region else 0
+                
+                # Detect language
+                lang = detect_language(text)
+                
+                # Apply correction if enabled
+                if request.use_correction:
+                    words = text.split()
+                    corrected = ' '.join(
+                        correct_word(w, lang, request.correction_threshold) 
+                        for w in words
+                    )
+                else:
+                    corrected = text
+                
+                # Calculate bounding box
+                x1 = int(bbox[0][0] / scale_factor + offset_x)
+                y1 = int(bbox[0][1] / scale_factor + offset_y)
+                x2 = int(bbox[2][0] / scale_factor + offset_x)
+                y2 = int(bbox[2][1] / scale_factor + offset_y)
+                
+                formatted_blocks.append({
+                    "original": text,
+                    "corrected": corrected,
+                    "confidence": round(confidence * 100, 1),
+                    "language": lang,
+                    "bbox": [x1, y1, x2 - x1, y2 - y1]
+                })
+            
+            # Generate full text
+            full_text = '\n'.join(b['corrected'] for b in formatted_blocks)
+            
+            # Language summary
+            lang_counts = {"en": 0, "hi": 0}
+            for block in formatted_blocks:
+                lang_counts[block['language']] += 1
+            
+            if lang_counts['hi'] > lang_counts['en']:
+                language_summary = "Hindi"
+            elif lang_counts['en'] > lang_counts['hi']:
+                language_summary = "English"
+            else:
+                language_summary = "Mixed"
+            
+            return formatted_blocks, full_text, language_summary
+        
+        formatted_blocks, full_text, language_summary = await asyncio.to_thread(_blocking_ocr)
+        
         # Save history snapshot
         await save_history_snapshot(
             request.session_id,
             "OCR Text Extraction",
             {"mode": request.mode, "correction": request.use_correction}
         )
-        
-        # Load image
-        image_path = get_working_image_path(request.session_id)
-        img = Image.open(image_path)
-        
-        # Crop to region if specified
-        if request.region:
-            x, y, w, h = request.region
-            img = img.crop((x, y, x + w, y + h))
-        
-        # Convert to OpenCV format
-        img_cv = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
-        
-        # Preprocessing for better OCR accuracy
-        h_img, w_img = img_cv.shape[:2]
-        
-        # Upscale small images (OCR works better on larger text)
-        if w_img < 1000:
-            scale = 1000 / w_img
-            img_cv = cv2.resize(img_cv, None, fx=scale, fy=scale, 
-                              interpolation=cv2.INTER_CUBIC)
-        
-        # Convert to grayscale + enhance contrast
-        gray = cv2.cvtColor(img_cv, cv2.COLOR_BGR2GRAY)
-        gray = cv2.fastNlMeansDenoising(gray, h=10, templateWindowSize=7, searchWindowSize=21)
-        _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        
-        # Language mapping
-        lang_map = {
-            "auto": ["en", "hi"],
-            "english": ["en"],
-            "hindi": ["hi"],
-            "mixed": ["en", "hi"]
-        }
-        langs = lang_map.get(request.mode, ["en", "hi"])
-        
-        # Get EasyOCR reader
-        reader = get_reader(langs)
-        
-        # Perform OCR
-        results = reader.readtext(
-            img_cv,
-            paragraph=True,
-            decoder='beamsearch',
-            beamWidth=10,
-            contrast_ths=0.1,
-            adjust_contrast=0.5
-        )
-        
-        # Format results with correction
-        formatted_blocks = []
-        scale_factor = 1000 / w_img if w_img < 1000 else 1.0
-        
-        for bbox, text, confidence in results:
-            # Scale coordinates back if image was upscaled
-            offset_x = request.region[0] if request.region else 0
-            offset_y = request.region[1] if request.region else 0
-            
-            # Detect language
-            lang = detect_language(text)
-            
-            # Apply correction if enabled
-            if request.use_correction:
-                words = text.split()
-                corrected = ' '.join(
-                    correct_word(w, lang, request.correction_threshold) 
-                    for w in words
-                )
-            else:
-                corrected = text
-            
-            # Calculate bounding box
-            x1 = int(bbox[0][0] / scale_factor + offset_x)
-            y1 = int(bbox[0][1] / scale_factor + offset_y)
-            x2 = int(bbox[2][0] / scale_factor + offset_x)
-            y2 = int(bbox[2][1] / scale_factor + offset_y)
-            
-            formatted_blocks.append({
-                "original": text,
-                "corrected": corrected,
-                "confidence": round(confidence * 100, 1),
-                "language": lang,
-                "bbox": [x1, y1, x2 - x1, y2 - y1]
-            })
-        
-        # Generate full text
-        full_text = '\n'.join(b['corrected'] for b in formatted_blocks)
-        
-        # Language summary
-        lang_counts = {"en": 0, "hi": 0}
-        for block in formatted_blocks:
-            lang_counts[block['language']] += 1
-        
-        if lang_counts['hi'] > lang_counts['en']:
-            language_summary = "Hindi"
-        elif lang_counts['en'] > lang_counts['hi']:
-            language_summary = "English"
-        else:
-            language_summary = "Mixed"
         
         return {
             "success": True,
