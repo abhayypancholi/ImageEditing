@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  # MongoDB Database
+  mongodb:
+    image: mongo:7.0
+    container_name: image-editor-mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    environment:
+      MONGO_INITDB_DATABASE: pixelcraft
+    networks:
+      - app-network
+
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: image-editor-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/storage:/app/storage
+    environment:
+      - MONGODB_URI=mongodb://mongodb:27017
+      - DATABASE_NAME=pixelcraft
+      - ENVIRONMENT=production
+      - FRONTEND_URL=http://localhost:3000
+    depends_on:
+      - mongodb
+    networks:
+      - app-network
+
+  # Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: image-editor-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    environment:
+      - VITE_API_BASE_URL=http://localhost:8000
+    depends_on:
+      - backend
+    networks:
+      - app-network
+
+volumes:
+  mongodb_data:
+
+networks:
+  app-network:
+    driver: bridge
