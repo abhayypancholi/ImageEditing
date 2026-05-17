@@ -11,6 +11,7 @@ import asyncio
 
 from app.services.file_service import get_working_image_path
 from app.services.history_service import save_history_snapshot
+from app.database import get_database
 
 router = APIRouter()
 
@@ -298,11 +299,14 @@ async def extract_text(request: OCRRequest):
         
         formatted_blocks, full_text, language_summary = await asyncio.to_thread(_blocking_ocr)
         
-        # Save history snapshot
+        # Save history snapshot (OCR is read-only, snapshot the current working image)
+        working_path = get_working_image_path(request.session_id)
+        db = get_database()
         await save_history_snapshot(
             request.session_id,
             "OCR Text Extraction",
-            {"mode": request.mode, "correction": request.use_correction}
+            working_path,
+            db
         )
         
         return {

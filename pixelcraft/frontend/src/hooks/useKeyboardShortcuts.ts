@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useHistory } from './useHistory';
-import { useAppStateStore, AppState } from '../store/appStateStore';
+import { useAppStateStore, AppState } from '@/store/appStateStore';
 import { useUIStore } from '../store/uiStore';
 import toast from 'react-hot-toast';
 
@@ -23,14 +23,14 @@ export const useKeyboardShortcuts = () => {
       }
 
       // Undo: Ctrl+Z (but not Ctrl+Shift+Z)
-      if (e.ctrlKey && !e.shiftKey && e.key === 'z') {
+      if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'z') {
         e.preventDefault();
         handleUndo();
         return;
       }
 
       // Redo: Ctrl+Shift+Z or Ctrl+Y
-      if ((e.ctrlKey && e.shiftKey && e.key === 'Z') || (e.ctrlKey && e.key === 'y')) {
+      if ((e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'z') || (e.ctrlKey && e.key.toLowerCase() === 'y')) {
         e.preventDefault();
         handleRedo();
         return;

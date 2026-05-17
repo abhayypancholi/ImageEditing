@@ -4,9 +4,11 @@ from typing import Optional
 import numpy as np
 from PIL import Image
 import cv2
+import io
 
 from app.services.file_service import get_working_image_path, save_working_image
 from app.services.history_service import save_history_snapshot
+from app.database import get_database
 
 router = APIRouter()
 
@@ -81,13 +83,18 @@ async def straighten_image(request: StraightenRequest):
         
         # Save result
         result_img = Image.fromarray(cv2.cvtColor(rotated, cv2.COLOR_BGR2RGB))
-        save_working_image(request.session_id, result_img)
+        buf = io.BytesIO()
+        result_img.save(buf, format='PNG')
+        save_working_image(buf.getvalue(), request.session_id, "png")
         
         # Save history snapshot
+        working_path = get_working_image_path(request.session_id)
+        db = get_database()
         await save_history_snapshot(
             request.session_id,
             f"Auto Straighten ({-skew_angle:.1f}°)",
-            {"detected_angle": skew_angle, "correction": correction}
+            working_path,
+            db
         )
         
         return {

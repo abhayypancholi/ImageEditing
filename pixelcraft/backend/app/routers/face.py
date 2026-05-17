@@ -11,6 +11,7 @@ import asyncio
 
 from app.services.file_service import get_working_image_path
 from app.services.history_service import save_history_snapshot
+from app.database import get_database
 
 router = APIRouter()
 
@@ -150,10 +151,13 @@ async def analyze_faces(request: FaceAnalyzeRequest):
             })
         
         # Save history snapshot
+        working_path = get_working_image_path(request.session_id)
+        db = get_database()
         await save_history_snapshot(
             request.session_id,
             "Face Expression Analysis",
-            {}
+            working_path,
+            db
         )
         
         return {

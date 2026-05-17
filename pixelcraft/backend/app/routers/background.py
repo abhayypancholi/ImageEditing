@@ -4,10 +4,19 @@ from typing import List, Optional
 import numpy as np
 from PIL import Image, ImageFilter
 import cv2
+import io
 from collections import deque
 
 from app.services.file_service import get_working_image_path, save_working_image
 from app.services.history_service import save_history_snapshot
+from app.database import get_database
+
+
+def save_pil_as_working(session_id: str, pil_image: Image.Image) -> None:
+    """Helper: save a PIL Image to the working directory as PNG bytes."""
+    buf = io.BytesIO()
+    pil_image.save(buf, format='PNG')
+    save_working_image(buf.getvalue(), session_id, "png")
 
 router = APIRouter()
 
@@ -23,13 +32,6 @@ class RemoveBackgroundRequest(BaseModel):
 async def remove_background(request: RemoveBackgroundRequest):
     """Remove background from image"""
     try:
-        # Save history snapshot
-        await save_history_snapshot(
-            request.session_id,
-            f"Background Removal ({request.mode})",
-            {"mode": request.mode, "replace": request.replace_mode}
-        )
-        
         # Load image
         image_path = get_working_image_path(request.session_id)
         input_img = Image.open(image_path)
@@ -121,7 +123,7 @@ async def remove_background(request: RemoveBackgroundRequest):
         # Apply replacement mode
         if request.replace_mode == "transparent":
             # Save as PNG with transparency
-            save_working_image(request.session_id, output_img)
+            save_pil_as_working(request.session_id, output_img)
         
         elif request.replace_mode == "color":
             # Replace transparent areas with solid color
@@ -130,7 +132,7 @@ async def remove_background(request: RemoveBackgroundRequest):
             
             bg = Image.new('RGBA', output_img.size, (*request.replace_color, 255))
             bg.paste(output_img, mask=output_img.split()[3])
-            save_working_image(request.session_id, bg.convert('RGB'))
+            save_pil_as_working(request.session_id, bg.convert('RGB'))
         
         elif request.replace_mode == "blur":
             # Replace transparent areas with blurred original
@@ -138,7 +140,17 @@ async def remove_background(request: RemoveBackgroundRequest):
             blurred_bg = orig.filter(ImageFilter.GaussianBlur(radius=20))
             bg = blurred_bg.convert('RGBA')
             bg.paste(output_img, mask=output_img.split()[3])
-            save_working_image(request.session_id, bg.convert('RGB'))
+            save_pil_as_working(request.session_id, bg.convert('RGB'))
+        
+        # Save history snapshot
+        working_path = get_working_image_path(request.session_id)
+        db = get_database()
+        await save_history_snapshot(
+            request.session_id,
+            f"Background Removal ({request.mode})",
+            working_path,
+            db
+        )
         
         return {
             "success": True,

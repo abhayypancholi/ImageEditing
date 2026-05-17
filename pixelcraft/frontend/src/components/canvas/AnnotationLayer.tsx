@@ -1,6 +1,7 @@
 import React from 'react';
 import { Stage, Layer, Rect, Circle, Line } from 'react-konva';
 import { useAnnotationStore, Annotation } from '../../store/annotationStore';
+import toast from 'react-hot-toast';
 
 interface AnnotationLayerProps {
   width: number;
@@ -17,7 +18,56 @@ export const AnnotationLayer: React.FC<AnnotationLayerProps> = ({
   offsetX,
   offsetY,
 }) => {
-  const { annotations, selectedAnnotationId, selectAnnotation, drawingState } = useAnnotationStore();
+  const { annotations, selectedAnnotationId, selectAnnotation, drawingState, continueDrawing, finishDrawing } = useAnnotationStore();
+
+  const handleMouseDown = (e: any) => {
+    if (!drawingState.currentType) return;
+    const stage = e.target.getStage();
+    const pos = stage.getPointerPosition();
+    if (!pos) return;
+    // Convert from screen to image coords (account for pan/zoom)
+    const imgX = (pos.x - offsetX) / scale;
+    const imgY = (pos.y - offsetY) / scale;
+    useAnnotationStore.setState((s) => ({
+      drawingState: {
+        ...s.drawingState,
+        isDrawing: true,
+        currentPoints: [imgX, imgY],
+      },
+    }));
+  };
+
+  const handleMouseMove = (e: any) => {
+    if (!drawingState.isDrawing || !drawingState.currentType) return;
+    const stage = e.target.getStage();
+    const pos = stage.getPointerPosition();
+    if (!pos) return;
+    const imgX = (pos.x - offsetX) / scale;
+    const imgY = (pos.y - offsetY) / scale;
+    continueDrawing(imgX, imgY);
+  };
+
+  const handleMouseUp = () => {
+    if (!drawingState.isDrawing || !drawingState.currentType) return;
+    const type = drawingState.currentType;
+    // For freehand/polygon, only finish on double-click; for others finish on mouseup
+    if (type === 'freehand' || type === 'polygon') return; // handled by dblclick
+    const annotation = finishDrawing('Object');
+    if (annotation) {
+      toast.success(`${type} annotation added`);
+    }
+  };
+
+  const handleDblClick = () => {
+    if (!drawingState.isDrawing) return;
+    const type = drawingState.currentType;
+    if (type === 'freehand' || type === 'polygon') {
+      const annotation = finishDrawing('Object');
+      if (annotation) {
+        toast.success(`${type} annotation added`);
+      }
+    }
+  };
 
   const renderAnnotation = (annotation: Annotation) => {
     const isSelected = annotation.id === selectedAnnotationId;
@@ -235,18 +285,24 @@ export const AnnotationLayer: React.FC<AnnotationLayerProps> = ({
     <Stage
       width={width}
       height={height}
-      scaleX={scale}
-      scaleY={scale}
-      x={offsetX}
-      y={offsetY}
       style={{
         position: 'absolute',
         top: 0,
         left: 0,
-        pointerEvents: drawingState.isDrawing ? 'auto' : 'none',
+        cursor: drawingState.currentType ? 'crosshair' : 'default',
+        pointerEvents: drawingState.currentType ? 'auto' : 'none',
       }}
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      onDblClick={handleDblClick}
     >
-      <Layer>
+      <Layer
+        scaleX={scale}
+        scaleY={scale}
+        x={offsetX}
+        y={offsetY}
+      >
         {annotations.map(renderAnnotation)}
         {renderCurrentDrawing()}
       </Layer>

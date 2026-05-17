@@ -9,8 +9,16 @@ import asyncio
 
 from app.services.file_service import get_working_image_path, save_working_image
 from app.services.history_service import save_history_snapshot
+from app.database import get_database
 
 router = APIRouter()
+
+
+def save_pil_as_working(session_id: str, pil_image: Image.Image) -> None:
+    """Helper: save a PIL Image to the working directory as PNG bytes."""
+    buf = io.BytesIO()
+    pil_image.save(buf, format='PNG')
+    save_working_image(buf.getvalue(), session_id, "png")
 
 class CompressJPEGRequest(BaseModel):
     session_id: str
@@ -50,9 +58,10 @@ async def compress_jpeg(request: CompressJPEGRequest):
             
             # Load compressed image
             compressed_image = Image.open(buffer)
+            compressed_image.load()  # force load before buffer is reused
             
             # Save result
-            save_working_image(request.session_id, compressed_image)
+            save_pil_as_working(request.session_id, compressed_image)
             
             # Get file sizes for comparison
             original_size = len(open(image_path, 'rb').read())
@@ -65,10 +74,13 @@ async def compress_jpeg(request: CompressJPEGRequest):
         original_size, compressed_size, compression_ratio = await asyncio.to_thread(_blocking_jpeg)
         
         # Save history snapshot
+        working_path = get_working_image_path(request.session_id)
+        db = get_database()
         await save_history_snapshot(
             request.session_id,
             "JPEG Compression",
-            {"quality": request.quality}
+            working_path,
+            db
         )
         
         return {
@@ -105,10 +117,13 @@ async def compress_pca(request: CompressPCARequest):
             )
         
         # Save history snapshot
+        working_path = get_working_image_path(request.session_id)
+        db = get_database()
         await save_history_snapshot(
             request.session_id,
             "PCA Compression",
-            {"components": request.components}
+            working_path,
+            db
         )
         
         return {
@@ -254,17 +269,20 @@ async def compress_palette(request: CompressPaletteRequest):
             compressed_image = Image.fromarray(compressed_array)
             
             # Save result
-            save_working_image(request.session_id, compressed_image)
+            save_pil_as_working(request.session_id, compressed_image)
             
             return n_colors, palette.tolist()
         
         n_colors, palette = await asyncio.to_thread(_blocking_palette)
         
         # Save history snapshot
+        working_path = get_working_image_path(request.session_id)
+        db = get_database()
         await save_history_snapshot(
             request.session_id,
             "Palette Reduction",
-            {"colors": request.colors}
+            working_path,
+            db
         )
         
         return {

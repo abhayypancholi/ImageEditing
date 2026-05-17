@@ -50,7 +50,11 @@ MAX_FILE_SIZE = settings.max_file_size
 ALLOWED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff", ".tif"}
 
 # CORS settings
-ALLOWED_ORIGINS = ["*"]  # This is the "allow all" master key
+ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+    "http://localhost:3000",
+    settings.frontend_url,
+]
 
 # MongoDB settings
 MONGODB_URI = settings.mongodb_uri

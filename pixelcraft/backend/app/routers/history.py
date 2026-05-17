@@ -9,7 +9,7 @@ import os
 import asyncio
 
 from app.services.file_service import get_working_image_path, get_history_image_path
-from app.database import get_database, get_db
+from app.database import get_database
 
 router = APIRouter()
 
@@ -18,7 +18,7 @@ class RestoreRequest(BaseModel):
     snapshot_id: str
 
 @router.post("/restore")
-async def restore_snapshot(body: dict, db = Depends(get_db)):
+async def restore_snapshot(body: dict, db = Depends(get_database)):
     """
     FIX B8: Restore history endpoint with proper original/history handling
     """

@@ -50,7 +50,17 @@ export const BgRemovePanel: React.FC = () => {
       if (response.data.success) {
         // Update working image
         if (response.data.data?.working_image_base64) {
-          setWorkingImage(response.data.data.working_image_base64);
+          // Generate a minimal metadata object for the expected 2 arguments
+          setWorkingImage(response.data.data.working_image_base64, {
+            ...useImageStore.getState().metadata,
+            width: useImageStore.getState().metadata?.width || 0,
+            height: useImageStore.getState().metadata?.height || 0,
+            fileSizeBytes: useImageStore.getState().metadata?.fileSizeBytes || 0,
+            format: 'png',
+            colorMode: 'RGBA',
+            fileName: useImageStore.getState().metadata?.fileName || 'image.png',
+            hasAlpha: true
+          });
         }
         
         toast.success('Background removed successfully', { id: loadingToast });

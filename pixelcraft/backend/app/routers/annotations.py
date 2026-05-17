@@ -38,7 +38,7 @@ async def save_annotations(request: SaveAnnotationsRequest):
         db = get_database()
         
         # Convert annotations to dict
-        annotations_data = [ann.dict() for ann in request.annotations]
+        annotations_data = [ann.model_dump() for ann in request.annotations]
         
         # Update session document
         result = await db.sessions.update_one(
@@ -84,7 +84,7 @@ async def get_annotations(session_id: str):
 async def export_annotations(request: ExportAnnotationsRequest):
     """Export annotations in various formats"""
     try:
-        annotations = [ann.dict() for ann in request.annotations]
+        annotations = [ann.model_dump() for ann in request.annotations]
         
         if request.format == "json":
             # Simple JSON format

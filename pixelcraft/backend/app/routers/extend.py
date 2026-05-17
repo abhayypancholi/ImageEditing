@@ -8,6 +8,7 @@ import asyncio
 
 from app.services.file_service import get_working_image_path, save_working_image
 from app.services.history_service import save_history_snapshot
+from app.database import get_database
 
 router = APIRouter()
 
@@ -43,15 +44,13 @@ async def extend_image(request: ExtendRequest):
             )
         
         # Save history snapshot
+        working_path = get_working_image_path(request.session_id)
+        db = get_database()
         await save_history_snapshot(
             request.session_id,
             "Image Extension",
-            {
-                "left": request.extend_left,
-                "right": request.extend_right,
-                "top": request.extend_top,
-                "bottom": request.extend_bottom
-            }
+            working_path,
+            db
         )
         
         return {

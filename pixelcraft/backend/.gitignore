@@ -1,0 +1,16 @@
+# Environments
+.env
+venv/
+env/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Local storage (where your uploaded/cropped images are)
+storage/
+data/
+
+# OS specific
+.DS_Store
+Thumbs.db

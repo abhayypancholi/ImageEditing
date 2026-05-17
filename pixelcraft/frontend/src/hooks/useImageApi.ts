@@ -67,20 +67,12 @@ export const useImageApi = () => {
     if (!sessionId || !metadata) return;
     
     try {
-      const response = await fetch(
-        `${import.meta.env.VITE_API_URL}/api/image/${sessionId}?t=${Date.now()}`
+      const response = await apiClient.get<{ imageBase64: string }>(
+        `/api/session/${sessionId}/image`
       );
       
-      if (!response.ok) throw new Error('Failed to refresh image');
-      
-      const blob = await response.blob();
-      const base64 = await new Promise<string>((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result as string);
-        reader.readAsDataURL(blob);
-      });
-      
-      setWorkingImage(base64, metadata);
+      // Store raw base64 (ImageCanvas adds the data URI prefix itself)
+      setWorkingImage(response.data.imageBase64, metadata);
     } catch (error) {
       console.error('Failed to refresh image:', error);
     }

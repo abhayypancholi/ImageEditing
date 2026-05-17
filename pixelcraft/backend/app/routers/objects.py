@@ -12,6 +12,7 @@ import cv2
 
 from app.services.file_service import get_working_image_path
 from app.services.history_service import save_history_snapshot
+from app.database import get_database
 
 router = APIRouter()
 
@@ -335,10 +336,13 @@ async def remove_object(request: RemoveObjectRequest):
         await asyncio.to_thread(_blocking_remove)
         
         # Save history snapshot
+        working_path = get_working_image_path(request.session_id)
+        db = get_database()
         await save_history_snapshot(
             request.session_id,
             f"Object Removal ({request.fill_mode})",
-            {"fill_mode": request.fill_mode}
+            working_path,
+            db
         )
         
         return {

@@ -38,6 +38,7 @@ export const AnnotationPanel: React.FC = () => {
     addLabel,
     removeLabel,
     clearAnnotations,
+    cancelDrawing,
   } = useAnnotationStore();
 
   const { sessionId, metadata } = useImageStore();
@@ -172,10 +173,23 @@ export const AnnotationPanel: React.FC = () => {
               {shapeButtons.map((shape) => (
                 <Button
                   key={shape.type}
-                  variant="secondary"
+                  variant={drawingState.currentType === shape.type ? 'primary' : 'secondary'}
                   size="sm"
                   onClick={() => {
-                    toast.success(`${shape.label} tool active - Click on canvas to draw`);
+                    if (drawingState.currentType === shape.type) {
+                      cancelDrawing();
+                      toast.success(`${shape.label} tool deactivated`);
+                    } else {
+                      useAnnotationStore.setState((s) => ({
+                        drawingState: {
+                          ...s.drawingState,
+                          currentType: shape.type,
+                          isDrawing: false,
+                          currentPoints: [],
+                        },
+                      }));
+                      toast.success(`${shape.label} tool active — click on canvas to draw`);
+                    }
                   }}
                   className="flex flex-col items-center gap-1 py-3"
                 >
